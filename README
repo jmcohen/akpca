@@ -1,0 +1,28 @@
+Files
+=======
+
+Optimization 
+-------------
+pca.py : performs PCA
+pca_centered.py : centers data, then performs PCA
+kpca.py : performs kernel PCA
+kpca_nystrom.py : approximately performs kernel PCA using the nystrom approximation 
+akpca.py : solves AKPCA using either SGD or SVRG
+ds_akpca.py : solves data-span version of AKPCA
+
+
+Analysis
+--------
+denoise.py : denoising task -- add noise and try to reconstruct original data
+corrupt.py : corrupt data for use in denoising experiment
+classify.py : cross-validated classification task
+
+
+Helper files
+------------
+models.py : functions for encoding data and reconstructing data under various models
+datasets.py : loads datasets (warning: very messy code)
+common.py : various useful functions
+
+
+
