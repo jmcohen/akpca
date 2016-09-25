@@ -24,7 +24,7 @@
 Dimensionality reduction is a widely-studied problem in data analysis and machine learning, with applications to compression, de-noising, and classification.
 Given a sample of $n$ data points $\{\mathbf{x}_i\}_{i=1}^n \subset \reals^d$ drawn from some distribution $\mathcal{D}$, the goal is to learn an ``encoder'' $f: \reals^d \to \reals^k$ which preserves ``informative'' structure while discarding noise.
 What makes for informative structure?
-A number of popular dimensionality reduction techniques can be motivated by what might be termed the ``autoencoder principle'': an encoder $f$ learns informative structure in the data if there exists a decoder $g: \reals^k \to \reals^d$ which can accurately reverse the encoding to ``reconstruct'' the original data, so that $g(f(\mathbf{x})) \approx \mathbf{x}$ for all $\mathbf{x} \sim \mathcal{D}$.
+A number of popular dimensionality reduction techniques can be motivated by what might be termed the ``autoencoder principle'': an encoder $f$ learns informative structure in the data if there exists a decoder $g: \reals^k \to \reals^d$ which can accurately reverse the encoding to ``reconstruct'' the original data, so that $g(f(\mathbf{x})) \approx \mathbf{x}$ for all $\mathbf{x} \sim \mathcal{D}$ \cite{hazan2016}.
 
 Principal component analysis (PCA) is a linear dimensionality reduction technique which finds the $k$-dimensional subspace ``closest to'' the data.
 From an autoencoding perspective, PCA finds the linear encoder $f(\mathbf{x}) = \mathbf{A} \mathbf{x}$ that minimizes the error in reconstructing the data points from their encodings.
@@ -770,6 +770,12 @@ Likewise, our algorithms did not perform well at compressing the CIFAR-10 or LFW
 A final drawback to the two algorithms we propose is that they are computationally expensive: whereas PCA takes seconds on the datasets we consider, and kernel PCA takes minutes at most, our algorithms require a runtime on the scale of hours, since they perform stochastic gradient descent on a non-convex objective.
 
 \begin{thebibliography}{9}
+
+\bibitem{hazan2016}
+Elad Hazan and Tengyu Ma.
+``A non-generative framework and convex relaxations for unsupervised learning.''
+\textit{Advances in Neural Information Processing Systems.}
+2016.
 
 \bibitem{kwok2003}
 James Kwok and Ivor Tsang.
