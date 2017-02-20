@@ -10,6 +10,8 @@ from datasets import get_dataset, get_dataset_names
 from common import tensor_product, spectral_norm, poly2_preimage, unsigned_distance, to_matrix, pad
 from scipy.sparse.linalg import svds
 
+REPORT_PROGRESS_EVERY = 1000
+
 def initialize(k, d2):
 	""" Return a (k x d2) matrix filled with random positive and negative values """
 	A = np.random.rand(k, d2) - 0.5
@@ -241,105 +243,6 @@ def pesd_minibatch_gradient(minibatch, X, A, B, compute_recon_err=True):
 
 	return (gradA, gradB, loss, recon_err)
 
-def svrg(X, k, save_dir, step_size, epoch_size, nepochs, start_after, cheat_factor, half):
-	""" SVRG for PESD.
-
-	Saves the current model (and the current loss, and the current reconstruction error) after every epoch.
-
-
-	Parameters
-	----------
-	X : ndarray, shape (n, d)
-		the data matrix, with each row as a data point
-	k : int
-		the number of components to learn
-	save_dir : string 
-		the directory in which to save the model
-	initial_step_size : float
-	epoch_size : float
-		number of iterations in each epoch, as a percentage of the data set
-	nepochs : int
-		number of epochs to run SGD for
-	start_after : int
-		if -1, initialize A and B randomly and start from the beginning
-		otherwise, load the A and B from this and start from there
-	cheat_factor : int
-		if cheat_factor > 1, when computing the loss and reconstruction error after every epoch, 
-		subsample the dataset by this factor 
-	half : string
-		which half of the datset 
-	"""
-
-	# save results in exp_dir
-	exp_dir = '%s/svrg_k_%s_step_%s_epoch_%s_%s' % (save_dir, k, step_size, epoch_size, half)
-	if save_dir and not os.path.exists(exp_dir):
-		os.mkdir(exp_dir)
-
-	n, d = X.shape
-	d2 = d ** 2
-
-	losses = np.zeros(nepochs)
-	recon_errs = np.zeros(nepochs)
-
-	if start_after == -1:
-		A = initialize(k, d2)
-		B = initialize(d2, k)
-	else:
-		A = np.load('%s/iter%d_A.npy' % (exp_dir, start_after))
-		B = np.load('%s/iter%d_B.npy' % (exp_dir, start_after))
-		losses[:start_after] = np.loadtxt('%s/iter%s_loss.txt' % (exp_dir, start_after))
-		recon_errs[:start_after] = np.loadtxt('%s/iter%s_recon.txt' % (exp_dir, start_after))
-
-	print exp_dir
-
-	A_snapshot = A.copy()
-	B_snapshot = B.copy()
-
-	print "epoch\tloss\trecon err\tfull gradient time\tepoch time\ttime"
-
-	for epoch in range(nepochs):
-
-		t1 = datetime.now()
-
-		(gradA, gradB, loss, recon_err) = compute_gradient_approx(X, A_snapshot, B_snapshot, cheat_factor=cheat_factor)
-		print "computed full gradient!"
-		losses[epoch] = loss
-		recon_errs[epoch] = recon_err
-
-		t2 = datetime.now()
-
-		if save_dir:
-			np.save('%s/iter%d_A.npy' % (exp_dir, epoch), A)
-			np.save('%s/iter%d_B.npy' % (exp_dir, epoch), B)
-			np.savetxt('%s/iter%s_loss.txt' % (exp_dir, epoch), losses[:epoch])
-			np.savetxt('%s/iter%s_recon.txt' % (exp_dir, epoch), recon_errs[:epoch])
-
-		muA = gradA / n
-		muB = gradB / n
-
-		for j in range(int(epoch_size * n)):
-			# pick an example at random
-			i = np.random.randint(0, n)
-
-			# compute the gradient wrt the current parameters
-			(stochastic_gradA, stochastic_gradB, _, _) = pesd_gradient_term_full(X[i,:], A, B, compute_recon_err=False)
-
-			# compute the gradient wrt the snapshot parameters
-			(stochastic_gradA_snapshot, stochastic_gradB_snapshot, _, _) = pesd_gradient_term_full(X[i,:], A_snapshot, B_snapshot, compute_recon_err=False)
-
-			# take a variance-reduced gradient step
-			A = A - step_size * (stochastic_gradA - stochastic_gradA_snapshot + muA)
-			B = B - step_size * (stochastic_gradB - stochastic_gradB_snapshot + muB)
-
-		t3 = datetime.now()
-
-		A_snapshot = A.copy()
-		B_snapshot = B.copy()
-
-		print "%d\t%f\t%f\t%s\t%s\t%s" % (epoch, loss, recon_err, t2 - t1, t3 - t2, t3)
-
-	return A, B
-
 def sgd(X, k, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, start_after, cheat_factor, half):
 	""" Stochastic gradient descent for PESD.
 
@@ -393,8 +296,8 @@ def sgd(X, k, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, 
 		losses[:start_after] = np.loadtxt('%s/iter%s_loss.txt' % (exp_dir, start_after))
 		recon_errs[:start_after] = np.loadtxt('%s/iter%s_recon.txt' % (exp_dir, start_after))
 
-	print exp_dir
-	print "epoch\tloss\trecon err"
+	print(exp_dir)
+	print("epoch\tloss\trecon err")
 
 	num_steps_per_epoch = int(epoch_size * n)
 
@@ -413,19 +316,25 @@ def sgd(X, k, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, 
 			np.savetxt('%s/iter%s_loss.txt' % (exp_dir, epoch), losses[:epoch])
 			np.savetxt('%s/iter%s_recon.txt' % (exp_dir, epoch), recon_errs[:epoch])
 
+		total_loss = 0
 		for j in range(num_steps_per_epoch):
 			minibatch = np.random.choice(examples, size=(minibatch_size))
 
 			t1 = datetime.now()
 			(gradA, gradB, loss, recon_err) = pesd_minibatch_gradient(minibatch, X, A, B, compute_recon_err=False)
 			t2 = datetime.now()
-			# if j % 100 == 0:
-			print (epoch * num_steps_per_epoch + j), loss, t2 - t1
+			total_loss += loss
+
 			A = A - (step_size / minibatch_size) * gradA
 			B = B - (step_size / minibatch_size) * gradB
 
+			if j % REPORT_PROGRESS_EVERY == 0:
+				average_loss = total_loss / REPORT_PROGRESS_EVERY
+				total_loss = 0
+				print ("\t{}\t{}".format(epoch * num_steps_per_epoch + j, average_loss))
+
 		loss, recon_err = pesd_loss_approx(X, A, B, cheat_factor=cheat_factor)
-		print "%f\t%f\t%f" % (epoch, loss / n, recon_err / n)
+		print("%f\t%f\t%f" % (epoch, loss / n, recon_err / n))
 
 		losses[epoch] = loss
 		recon_errs[epoch] = recon_err
@@ -439,7 +348,6 @@ if __name__ == '__main__':
 	parser.add_argument('k', type=int, help="number of components to learn")
 	parser.add_argument('step_size', type=float, help="initial step size")
 	parser.add_argument('--half', choices=['full', 'first', 'second'], default='full', help="which half of the dataset to use")
-	parser.add_argument('--algorithm', choices=['svrg', 'sgd'], default='svrg', help="which algorithm to use")
 	parser.add_argument('--epoch_size', type=float, default=1.0, help="epoch size, as a percentage of the dataset")
 	parser.add_argument('--nepochs', type=int, default=10, help="run for this many epochs")
 	parser.add_argument('--start_after', type=int, default=-1, help="continue a previous run, starting at this iteration")
@@ -456,9 +364,6 @@ if __name__ == '__main__':
 	if args.abridged:
 		X = X[0:1000]
 
-	if args.algorithm == 'svrg':
-		svrg(X, args.k, args.directory, args.step_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.half)
-	elif args.algorithm == 'sgd':
-		sgd(X, args.k, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.half)
+	sgd(X, args.k, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.half)
 
 

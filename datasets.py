@@ -187,7 +187,7 @@ def get_mnist(return_labels=False, centered=False, **kwargs):
 	if centered:
 		# X = preprocessing.scale(X, with_std=False)
 		X = X - X.mean(0)
-	for i in xrange(X.shape[0]):
+	for i in range(X.shape[0]):
 		X[i,:] = X[i,:] / norm(X[i,:])
 	if return_labels:
 		return (X, mnist['target'])
@@ -200,7 +200,7 @@ def get_mnist_big(return_labels=False, centered=False, **kwargs):
 	else:
 		mnist = fetch_mldata('MNIST original', data_home='/fastscratch/jmcohen/skdata')
 	X = mnist['data'].astype(np.float)
-	for i in xrange(X.shape[0]):
+	for i in range(X.shape[0]):
 		X[i,:] = X[i,:] / norm(X[i,:])
 	if return_labels:
 		return (X, mnist['target'])
@@ -214,7 +214,7 @@ def get_mnist_big_maxscaled(return_labels=False, **kwargs):
 		mnist = fetch_mldata('MNIST original', data_home='/fastscratch/jmcohen/skdata')
 	X = mnist['data'].astype(np.float)
 	maxnorm = max([norm(x) for x in X])
-	for i in xrange(X.shape[0]):
+	for i in range(X.shape[0]):
 		X[i,:] = X[i,:] / maxnorm
 	if return_labels:
 		return (X, mnist['target'])
@@ -228,7 +228,7 @@ def get_mnist_maxscaled(return_labels=False, **kwargs):
 		mnist = fetch_mldata('MNIST original', data_home='/fastscratch/jmcohen/skdata')
 	X = downsample_images(mnist['data'], 2)
 	maxnorm = max([norm(x) for x in X])
-	for i in xrange(X.shape[0]):
+	for i in range(X.shape[0]):
 		X[i,:] = X[i,:] / maxnorm
 	if return_labels:
 		return (X, mnist['target'])
