@@ -503,14 +503,14 @@ def downsample_image(image, factor):
 	side_length = int(sqrt(p))
 	image = image.reshape((side_length, side_length))
 	new_side_length = side_length / factor
-	down_image = image[::factor, ::factor].reshape((new_side_length ** 2,))
+	down_image = image[::factor, ::factor].reshape((int(new_side_length ** 2),))
 	return down_image
 
 def downsample_images(images, factor):
 	n, p = images.shape
 	side_length = int(sqrt(p))
 	new_side_length = side_length / factor
-	down_images = np.zeros((n, new_side_length ** 2))
+	down_images = np.zeros((n, int(new_side_length ** 2)))
 	for i in range(n):
 		down_images[i,:] = downsample_image(images[i,:], factor)
 	return down_images

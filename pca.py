@@ -38,6 +38,10 @@ if __name__ == '__main__':
 	# compute reconstruction error
 	recon_err = np.linalg.norm(X - recon, 'fro') ** 2
 
+	avg_recon_err = recon_err / X.shape[0]
+
+	print(avg_recon_err)
+
 	# save A and the reconstruction error
 	np.save('%s/iter0_A.npy' % exp_dir, A)
 	np.savetxt('%s/iter0_recon.txt' % exp_dir, np.array([recon_err]))
