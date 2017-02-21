@@ -182,7 +182,7 @@ def get_mnist(return_labels=False, centered=False, **kwargs):
 	if system() == 'Darwin':
 		mnist = fetch_mldata('MNIST original')
 	else:
-		mnist = fetch_mldata('MNIST original', data_home='/fastscratch/jmcohen/skdata')
+		mnist = fetch_mldata('MNIST original', data_home='~/skdata')
 	X = downsample_images(mnist['data'], 2)
 	if centered:
 		# X = preprocessing.scale(X, with_std=False)
