@@ -274,7 +274,7 @@ def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepoch
 	"""
 
 	# save results in exp_dir
-	exp_dir = '%s/sgd_k_%s_step_%s_epoch_%s_%s' % (save_dir, k, initial_step_size, epoch_size, half)
+	exp_dir = '%s/sgd_k_%s_r_%s_step_%s_epoch_%s_%s' % (save_dir, k, r, initial_step_size, epoch_size, half)
 	if save_dir and not os.path.exists(exp_dir):
 		os.mkdir(exp_dir)
 
