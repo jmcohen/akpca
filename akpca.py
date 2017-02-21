@@ -332,6 +332,13 @@ def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepoch
 		losses[epoch] = loss
 		recon_errs[epoch] = recon_err
 
+		if save_dir:
+			for i in range(k):
+				np.save('%s/iter%d_A_%d.npy' % (exp_dir, epoch, i), As[i])
+				np.save('%s/iter%d_B_%d.npy' % (exp_dir, epoch, i), Bs[i])
+				np.savetxt('%s/iter%s_loss.txt' % (exp_dir, epoch), losses[:epoch])
+				np.savetxt('%s/iter%s_recon.txt' % (exp_dir, epoch), recon_errs[:epoch])
+
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='SGD for PSED')
@@ -344,7 +351,6 @@ if __name__ == '__main__':
 	parser.add_argument('--epoch_size', type=float, default=1.0, help="epoch size, as a percentage of the dataset")
 	parser.add_argument('--nepochs', type=int, default=10, help="run for this many epochs")
 	parser.add_argument('--start_after', type=int, default=-1, help="continue a previous run, starting at this iteration")
-	parser.add_argument('--abridged', action='store_true', help="'abridge' the dataset by taking only the first 1000 data points -- useful for debugging on a machine with limited RAM")
 	parser.add_argument('--cheat_factor', type=int, default=1, help="when computing the loss and reconstruction error, subsample by this factor")
 	parser.add_argument('--minibatch_size', type=int, default=1, help="the size of each minibatch.  only used in SGD.")
 	args = parser.parse_args()
@@ -353,9 +359,6 @@ if __name__ == '__main__':
 		X = get_dataset(args.dataset, half=args.half)
 	else:
 		X = np.load(args.dataset)
-
-	if args.abridged:
-		X = X[0:1000]
 
 	sgd(X, args.k, args.rank, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.half)
 
