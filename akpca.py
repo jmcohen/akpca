@@ -312,7 +312,7 @@ def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepoch
 			total_loss += loss
 			total_recon_err += recon_err
 
-			for i in range(r):
+			for i in range(k):
 				As[i] = As[i] - (step_size / minibatch_size) * gradAs[i]
 				Bs[i] = Bs[i] - (step_size / minibatch_size) * gradBs[i]
 
