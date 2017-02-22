@@ -8,7 +8,7 @@ import argparse
 import os
 from datasets import get_dataset, get_dataset_names
 from common import tensor_product, spectral_norm, poly2_preimage, unsigned_distance, to_matrix, pad
-from scipy.sparse.linalg import svds
+from scipy.sparse.linalg import svds, eigs
 
 REPORT_PROGRESS_EVERY = 1000
 
@@ -39,36 +39,20 @@ def pesd_loss_approx(X, As, Bs, cheat_factor=1.0):
 	"""
 	n, d = X.shape
 	sample = np.random.choice(range(n), size=int(n / cheat_factor))
-	loss, recon_err = pesd_loss_minibatch(X[sample, :], X, As, Bs)
-	return loss * cheat_factor, recon_err * cheat_factor
+	return pesd_loss_exact(X[sample, :], As, Bs)
 
-def pesd_loss_minibatch(minibatch, X, As, Bs):
-	""" Computes the objective function and reconstruction error over a minibatch.
+def pesd_loss_exact(X, As, Bs):
+	return sum([pesd_loss_term(x, As, Bs) for x in X]) / X.shape[0]
 
-	Parameters
-	----------
-	X : ndarray, shape (n, d)
-	A : ndarray, shape (k, d^2)
-		the current encoding matrix
-	B : ndarray, shape (d^2, k)
-		the current decoding matrix
-
-	Returns
-	-------
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
-
-	"""
-	n, d = X.shape
-	loss = 0
-	recon_err = 0
-	for x in minibatch:
-		l, r = pesd_loss_term(x, As, Bs)
-		loss += l
-		recon_err += r
-	return loss, recon_err
+def loss_helper(Z, x):
+    w, V = eigs(0.5 * (Z + Z.T), k=1, tol=1e-4, maxiter=10000)
+    eigenvalue = w[0]
+    eigenvector = V[:,0]
+    return [
+    	unsigned_distance(x, eigenvector),
+		unsigned_distance(x, eigenvector * sqrt(eigenvalue)),
+		unsigned_distance(x, eigenvector * eigenvalue)
+	]
 
 def pesd_loss_term(x, As, Bs):
 	""" Computes the value of PESD objective function and the reconstruction error over one data point:
@@ -96,40 +80,9 @@ def pesd_loss_term(x, As, Bs):
 	Z = sum([(norm(A.dot(x)) ** 2) * B.dot(B.T) for (A, B) in zip(As, Bs)])
 	xxt = np.outer(x, x)
 	loss = spectral_norm(Z - xxt)
-	recon = poly2_preimage(Z)
-	recon_err = unsigned_distance(x, recon)
-	return loss, recon_err
+	return np.array([loss] + loss_helper(Z, x))
 
-def compute_gradient_approx(X, A, B, cheat_factor=4):
-	""" Approximates the gradient of the PESD objective function wrt A and B by computing it over a minibatch of the dataset.
-
-	Parameters
-	----------
-	X : ndarray, shape (n, d)
-		the dataset
-	A : ndarray, shape (k, d^2)
-		the current encoding matrix
-	B : ndarray, shape (d^2, k)
-		the current decoding matrix
-
-	Returns
-	-------
-	grad_A : ndarray, shape (k, d^2)
-		the derivative of the objective function wrt A
-	grad_B : ndarray, shape (d^2, k)
-		the derivative of the objective function wrt B
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
-
-	"""
-	n, d = X.shape
-	sample = np.random.choice(range(n), size=(n / cheat_factor))
-	grad_A, grad_B, loss, recon_err = pesd_minibatch_gradient(sample, X, A, B)
-	return grad_A * cheat_factor, grad_B * cheat_factor, loss * cheat_factor, recon_err * cheat_factor
-
-def pesd_gradient_term_full(x, As, Bs, compute_recon_err=True):
+def pesd_gradient_term_full(x, As, Bs):
 	""" Computes the value and gradient of the PESD objective function wrt A and B over one data point:
 
 	f(x) = ||B A x2 - x2||_2
@@ -181,18 +134,17 @@ def pesd_gradient_term_full(x, As, Bs, compute_recon_err=True):
 	for (A, B) in zip(As, Bs):
 		gradBs.append( (norm(A.dot(x)) ** 2) * (uvt + uvt.T).dot(B) )
 
-	if compute_recon_err:
-		# compute the reconstruction of x
-		recon = poly2_preimage(Z)
+	# compute the reconstruction of x
+	# recon = poly2_preimage(Z)
 
-		# compute the reconstruction error
-		recon_err = unsigned_distance(x, recon)
-	else:
-		recon_err = 0
+	# compute the reconstruction error
+	# recon_err = unsigned_distance(x, recon)
 
-	return gradAs, gradBs, loss, recon_err
+	metrics = np.array([loss] + loss_helper(Z, x))
 
-def pesd_minibatch_gradient(minibatch, X, As, Bs, compute_recon_err=True):
+	return gradAs, gradBs, metrics
+
+def pesd_minibatch_gradient(minibatch, X, As, Bs):
 	""" Computes the gradient of the PESD objective function wrt A and B over a minibatch of the dataset.
 
 	Parameters
@@ -228,19 +180,20 @@ def pesd_minibatch_gradient(minibatch, X, As, Bs, compute_recon_err=True):
 	loss = 0 
 	recon_err = 0
 
+	metrics = np.zeros(4)
+
 	for index in minibatch:
-		(gradA_terms, gradB_terms, loss_term, recon_err_term) = pesd_gradient_term_full(X[index,:], As, Bs, compute_recon_err=compute_recon_err)
+		(gradA_terms, gradB_terms, metrics_term) = pesd_gradient_term_full(X[index,:], As, Bs)
 
 		for i in range(k):
 			gradAs[i] += gradA_terms[i]
 			gradBs[i] += gradB_terms[i]
 
-		loss += loss_term
-		recon_err += recon_err_term
+		metrics += metrics_term
 
-	return (gradAs, gradBs, loss, recon_err)
+	return (gradAs, gradBs, metrics)
 
-def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, start_after, cheat_factor, half):
+def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, start_after, cheat_factor):
 	""" Stochastic gradient descent for PESD.
 
 	Use a step size schedule that decreases with the square root of the epoch number.
@@ -274,14 +227,14 @@ def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepoch
 	"""
 
 	# save results in exp_dir
-	exp_dir = '%s/sgd_k_%s_r_%s_step_%s_epoch_%s_%s' % (save_dir, k, r, initial_step_size, epoch_size, half)
+	exp_dir = '%s/sgd_k_%s_r_%s_step_%s_epoch_%s' % (save_dir, k, r, initial_step_size, epoch_size)
 	if save_dir and not os.path.exists(exp_dir):
 		os.mkdir(exp_dir)
 
-	n, d = X.shape
+	NUM_METRICS = 8
 
-	losses = np.zeros(nepochs)
-	recon_errs = np.zeros(nepochs)
+	n, d = X_train.shape
+	all_metrics = np.zeros((nepochs, NUM_METRICS))
 
 	if start_after == -1:
 		As = [initialize(r, d) for i in range(k)]
@@ -299,45 +252,40 @@ def sgd(X, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepoch
 
 		step_size = initial_step_size / (sqrt(epoch + 1))
 
-		total_loss = 0
-		total_recon_err = 0
+		total_metrics = np.zeros(4)
 
 		for j in range(num_steps_per_epoch):
 			minibatch = np.random.choice(examples, size=(minibatch_size))
 
 			t1 = datetime.now()
-			(gradAs, gradBs, loss, recon_err) = pesd_minibatch_gradient(minibatch, X, As, Bs, compute_recon_err=True)
+			(gradAs, gradBs, metrics) = pesd_minibatch_gradient(minibatch, X_train, As, Bs)
 			t2 = datetime.now()
 
-			total_loss += loss
-			total_recon_err += recon_err
+			total_metrics += metrics
 
 			for i in range(k):
 				As[i] = As[i] - (step_size / minibatch_size) * gradAs[i]
 				Bs[i] = Bs[i] - (step_size / minibatch_size) * gradBs[i]
 
 			if j % REPORT_PROGRESS_EVERY == 0 and j > 0:
-				average_loss = total_loss / REPORT_PROGRESS_EVERY
-				average_recon_err = total_recon_err / REPORT_PROGRESS_EVERY
+				average_metrics = metrics / REPORT_PROGRESS_EVERY
 
-				total_loss = 0
-				total_recon_err = 0
 				time_elapsed = datetime.now() - start_time
 
-				print ("\t{}\t{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, average_loss, average_recon_err, time_elapsed))
+				print ("\t{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, time_elapsed, "\t".join(map(str, list(average_metrics)))))
 
-		loss, recon_err = pesd_loss_approx(X, As, Bs, cheat_factor=cheat_factor)
-		print("{}\t{}\t{}".format(epoch, loss / n, recon_err / n))
-
-		losses[epoch] = loss
-		recon_errs[epoch] = recon_err
+		metrics_train = pesd_loss_approx(X_train, As, Bs, cheat_factor=cheat_factor)
+		metrics_test = pesd_loss_exact(X_test, As, Bs)
+		metrics = np.hstack((metrics_train, metrics_test))
+		all_metrics[i, :] = metrics
+		time_elapsed = datetime.now() - start_time
+		print ("\t{}\t{}\t{}".format(epoch, time_elapsed, "\t".join(map(str, list(metrics)))))
 
 		if save_dir:
 			for i in range(k):
 				np.save('%s/iter%d_A_%d.npy' % (exp_dir, epoch, i), As[i])
 				np.save('%s/iter%d_B_%d.npy' % (exp_dir, epoch, i), Bs[i])
-				np.savetxt('%s/iter%s_loss.txt' % (exp_dir, epoch), losses[:epoch])
-				np.savetxt('%s/iter%s_recon.txt' % (exp_dir, epoch), recon_errs[:epoch])
+				np.savetxt('%s/iter%s_metrics.txt' % (exp_dir, epoch), all_metrics[:epoch, :])
 
 
 if __name__ == '__main__':
@@ -347,7 +295,6 @@ if __name__ == '__main__':
 	parser.add_argument('k', type=int, help="number of components to learn")
 	parser.add_argument('rank', type=int, help="rank of each encoding / decoding matrix")
 	parser.add_argument('step_size', type=float, help="initial step size")
-	parser.add_argument('--half', choices=['full', 'first', 'second'], default='full', help="which half of the dataset to use")
 	parser.add_argument('--epoch_size', type=float, default=1.0, help="epoch size, as a percentage of the dataset")
 	parser.add_argument('--nepochs', type=int, default=10, help="run for this many epochs")
 	parser.add_argument('--start_after', type=int, default=-1, help="continue a previous run, starting at this iteration")
@@ -355,11 +302,13 @@ if __name__ == '__main__':
 	parser.add_argument('--minibatch_size', type=int, default=1, help="the size of each minibatch.  only used in SGD.")
 	args = parser.parse_args()
 
-	if args.dataset in get_dataset_names():
-		X = get_dataset(args.dataset, half=args.half)
-	else:
-		X = np.load(args.dataset)
+	ind_train = np.load('train.npy')
+	ind_test = np.load('test.npy')
 
-	sgd(X, args.k, args.rank, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.half)
+	X = get_dataset(args.dataset, half='full')
+	X_train = X[ind_train, :]
+	X_test = X[ind_test, :]
+
+	sgd(X_train, X_test, args.k, args.rank, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor)
 
 
