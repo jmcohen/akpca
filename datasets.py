@@ -198,7 +198,7 @@ def get_mnist_big(return_labels=False, centered=False, **kwargs):
 	if system() == 'Darwin':
 		mnist = fetch_mldata('MNIST original')
 	else:
-		mnist = fetch_mldata('MNIST original', data_home='/fastscratch/jmcohen/skdata')
+		mnist = fetch_mldata('MNIST original', data_home='~/skdata')
 	X = mnist['data'].astype(np.float)
 	for i in range(X.shape[0]):
 		X[i,:] = X[i,:] / norm(X[i,:])
