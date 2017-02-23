@@ -530,9 +530,16 @@ def downsample_images(images, factor):
         down_images[i,:] = downsample_image(images[i,:], factor)
     return down_images
 
+# def unpickle(file):
+#     import pickle
+#     fo = open(file, 'rb')
+#     dict = pickle.load(fo, encoding='latin1')
+#     fo.close()
+#     return dict
+
 def unpickle(file):
-    import pickle
+    import cPickle
     fo = open(file, 'rb')
-    dict = pickle.load(fo, encoding='latin1')
+    dict = cPickle.load(fo)
     fo.close()
     return dict
