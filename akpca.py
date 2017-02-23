@@ -6,7 +6,7 @@ from numpy.linalg import norm
 from datetime import datetime
 import argparse
 import os
-from datasets import get_dataset, get_dataset_names
+from datasets import load_dataset, get_dataset_names
 from common import tensor_product, spectral_norm, poly2_preimage, unsigned_distance, to_matrix, pad
 from scipy.sparse.linalg import svds, eigs, LinearOperator
 
@@ -154,7 +154,7 @@ def compute_singular_vectors(x, Bs, z):
     def rmatvec(v):
         return matvec(v) # the operator is symmetric
 
-    n, d = X.shape
+    d = x.size
 
     M = LinearOperator((d, d), matvec=matvec, rmatvec=rmatvec)
     U, S, Vt = svds(M, k=1, tol=1e-4, maxiter=10000)
@@ -162,9 +162,9 @@ def compute_singular_vectors(x, Bs, z):
     return S[0], U[:,0], Vt[0,:]
 
 def compute_eigenvector(Bs, z):
-    """ computes the leading left and right singular vectors of 
+    """ computes the eigenvector of
 
-    xx' - \sum_i z[i] X[i,:] X[i,:]'
+    \sum_i z[i] X[i,:] X[i,:]'
 
     Parameters
     ----------
@@ -193,7 +193,7 @@ def compute_eigenvector(Bs, z):
     def rmatvec(v):
         return matvec(v) # the operator is symmetric
 
-    n, d = X.shape
+    d = Bs[0].shape[0]
 
     Z = LinearOperator((d, d), matvec=matvec, rmatvec=rmatvec)
     w, v = eigs(Z, k=1, tol=1e-4, maxiter=10000)
@@ -304,7 +304,7 @@ def pesd_minibatch_gradient(minibatch, X, As, Bs):
 
     return (gradAs, gradBs, metrics)
 
-def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, start_after, cheat_factor):
+def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoch_size, nepochs, start_after, cheat_factor, initialize):
     """ Stochastic gradient descent for PESD.
 
     Use a step size schedule that decreases with the square root of the epoch number.
@@ -338,7 +338,7 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     """
 
     # save results in exp_dir
-    exp_dir = '%s/sgd_k_%s_r_%s_step_%s_epoch_%s' % (save_dir, k, r, initial_step_size, epoch_size)
+    exp_dir = '%s/sgd_k_%s_r_%s_step_%s_epoch_%s_%s' % (save_dir, k, r, initial_step_size, epoch_size, initialize)
     if save_dir and not os.path.exists(exp_dir):
         os.mkdir(exp_dir)
 
@@ -347,7 +347,7 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     n, d = X_train.shape
     all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
 
-    As, Bs = initialize_pca(X, k, r) if args.initialize == 'pca' else initialize_random(X, k, r)
+    As, Bs = initialize_pca(X_train, k, r) if initialize == 'pca' else initialize_random(X_train, k, r)
 
     print(exp_dir)
     print("epoch\tloss\trecon err")
@@ -413,13 +413,8 @@ if __name__ == '__main__':
     parser.add_argument('--initialize', type=str, choices=['random', 'pca'], default='random')
     args = parser.parse_args()
 
-    ind_train = np.load('train.npy')
-    ind_test = np.load('test.npy')
+    X_train, X_test = load_dataset(args.dataset)
 
-    X = get_dataset(args.dataset, half='full')
-    X_train = X[ind_train, :]
-    X_test = X[ind_test, :]
-
-    sgd(X_train, X_test, args.k, args.rank, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor)
+    sgd(X_train, X_test, args.k, args.rank, args.directory, args.step_size, args.minibatch_size, args.epoch_size, args.nepochs, args.start_after, args.cheat_factor, args.initialize)
 
 

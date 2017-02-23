@@ -7,7 +7,7 @@ from math import sqrt
 from numpy.linalg import norm
 import argparse
 import os
-from datasets import get_dataset, get_dataset_names
+from datasets import load_dataset, get_dataset_names
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='PCA')
@@ -23,12 +23,7 @@ if __name__ == '__main__':
 	if args.directory and not os.path.exists(exp_dir):
 		os.mkdir(exp_dir)
 
-	ind_train = np.load('train.npy')
-	ind_test = np.load('test.npy')
-
-	X = get_dataset(args.dataset, half='full')
-	X_train = X[ind_train, :]
-	X_test = X[ind_test, :]
+	X_train, X_test = load_dataset(args.dataset)
 
 	# compute the singular value decomposition of the data matrix
 	U, S, Vt = np.linalg.svd(X_train, full_matrices=False)
