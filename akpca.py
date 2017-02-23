@@ -8,15 +8,49 @@ import argparse
 import os
 from datasets import get_dataset, get_dataset_names
 from common import tensor_product, spectral_norm, poly2_preimage, unsigned_distance, to_matrix, pad
-from scipy.sparse.linalg import svds, eigs
+from scipy.sparse.linalg import svds, eigs, LinearOperator
 
 REPORT_PROGRESS_EVERY = 1000
 
-def initialize(k, d):
+
+def random_matrix(k, d):
     """ Return a (k x d2) matrix filled with random positive and negative values """
     A = np.random.rand(k, d) - 0.5
     A /= norm(A, 'fro')
     return A
+
+def initialize_random(X, k, r):
+    n, d = X.shape
+    As = [random_matrix(r, d) for i in range(k)]
+    Bs = [random_matrix(d, r) for i in range(k)]
+    return As, Bs
+
+def initialize_pca2(X, k, r):
+    n, d = X.shape
+    U, S, Vt = np.linalg.svd(X, full_matrices=False)
+
+    As = [np.zeros((r, d)) for i in range(k)]
+    Bs = [np.zeros((d, r)) for i in range(k)]
+
+    for i in range(k):
+        As[i][0, :] = Vt[i, :]
+        Bs[i][:, 0] = Vt[i, :]
+
+    return As, Bs
+
+def initialize_pca(X, k, r):
+    n, d = X.shape
+    U, S, Vt = np.linalg.svd(X, full_matrices=False)
+
+    As = [np.zeros((r, d)) for i in range(k)]
+    Bs = [np.zeros((d, r)) for i in range(k)]
+
+    for i in range(k):
+        for j in range(r):
+            As[i][j, :] = Vt[i, :] / sqrt(r)
+            Bs[i][:, j] = Vt[i, :] / sqrt(r)
+
+    return As, Bs
 
 def pesd_loss_approx(X, As, Bs, cheat_factor=1.0):
     """ Approximates the objective function and reconstruction error (three ways)
@@ -58,29 +92,6 @@ def pesd_loss_exact(X, As, Bs):
     """
     return sum([pesd_loss_term(x, As, Bs) for x in X]) / X.shape[0]
 
-def loss_helper(Z, x):
-    """ Computes the objective function and reconstruction error over a data point.
-
-    Parameters
-    ----------
-    Z : ndarray, shape (d^2, x^2)
-        the decoded data point
-    x : ndarray, shape (x,)
-        the data point
-    Returns
-    -------
-    recons: list of length 3: [recon1, recon2, recon3]
-
-    """
-    w, V = eigs(0.5 * (Z + Z.T), k=1, tol=1e-4, maxiter=10000)
-    eigenvalue = w[0]
-    eigenvector = V[:,0]
-    return [
-        unsigned_distance(x, eigenvector),
-        unsigned_distance(x, eigenvector * sqrt(eigenvalue)),
-        unsigned_distance(x, eigenvector * eigenvalue)
-    ]
-
 def pesd_loss_term(x, As, Bs):
     """ Computes the value of PESD objective function and the reconstruction error over one data point:
 
@@ -102,10 +113,93 @@ def pesd_loss_term(x, As, Bs):
         [loss, recon1, recon2, recon3]
 
     """
-    Z = sum([(norm(A.dot(x)) ** 2) * B.dot(B.T) for (A, B) in zip(As, Bs)])
-    xxt = np.outer(x, x)
-    loss = spectral_norm(Z - xxt)
-    return np.array([loss] + loss_helper(Z, x))
+    k = len(As)
+    Axs = [As[i].dot(x) for i in range(k)]
+    Ax_norms = np.array([norm(Ax) ** 2 for Ax in Axs])
+    loss, u, v = compute_singular_vectors(x, Bs, Ax_norms)
+    eigenvalue, eigenvector = compute_eigenvector(Bs, Ax_norms)
+    recon = sqrt(eigenvalue) * eigenvector
+    recon_err = unsigned_distance(recon, x)
+    return np.array([loss, recon_err])
+
+def compute_singular_vectors(x, Bs, z):
+    """ computes the leading left and right singular vectors of 
+
+    xx' - \sum_i z[i] X[i,:] X[i,:]'
+
+    Parameters
+    ----------
+    x : ndarray, shape (d, 1)
+    X : ndarray, shape (n, d)
+    z : ndarray, shape (n, 1)
+
+    Returns
+    -------
+    s : float
+        leading singular value
+    u : ndarray, shape (d, 1)
+        leading left singular vector
+    v : ndarray, shape (d, 1)
+        leading right singular vector
+
+    """
+    # product of M and a vector v
+    def matvec(v):
+        k = len(Bs)
+        v = v.squeeze()
+        return sum([z[i] * Bs[i].dot(Bs[i].T.dot(v)) for i in range(k)]) - x * x.dot(v) 
+
+
+    # product of M' and a vector v
+    def rmatvec(v):
+        return matvec(v) # the operator is symmetric
+
+    n, d = X.shape
+
+    M = LinearOperator((d, d), matvec=matvec, rmatvec=rmatvec)
+    U, S, Vt = svds(M, k=1, tol=1e-4, maxiter=10000)
+
+    return S[0], U[:,0], Vt[0,:]
+
+def compute_eigenvector(Bs, z):
+    """ computes the leading left and right singular vectors of 
+
+    xx' - \sum_i z[i] X[i,:] X[i,:]'
+
+    Parameters
+    ----------
+    x : ndarray, shape (d, 1)
+    X : ndarray, shape (n, d)
+    z : ndarray, shape (n, 1)
+
+    Returns
+    -------
+    s : float
+        leading singular value
+    u : ndarray, shape (d, 1)
+        leading left singular vector
+    v : ndarray, shape (d, 1)
+        leading right singular vector
+
+    """
+    # product of M and a vector v
+    def matvec(v):
+        k = len(Bs)
+        v = v.squeeze()
+        return sum([z[i] * Bs[i].dot(Bs[i].T.dot(v)) for i in range(k)])
+
+
+    # product of M' and a vector v
+    def rmatvec(v):
+        return matvec(v) # the operator is symmetric
+
+    n, d = X.shape
+
+    Z = LinearOperator((d, d), matvec=matvec, rmatvec=rmatvec)
+    w, v = eigs(Z, k=1, tol=1e-4, maxiter=10000)
+
+    return w[0], v[:,0]
+
 
 def pesd_gradient_term_full(x, As, Bs):
     """ Computes the value and gradient of the PESD objective function wrt A and B over one data point:
@@ -132,31 +226,34 @@ def pesd_gradient_term_full(x, As, Bs):
         [loss, recon1, recon2, recon3]
 
     """
+    t0 = datetime.now()
     k = len(As)
 
-    Z = sum([(norm(As[i].dot(x)) ** 2) * Bs[i].dot(Bs[i].T) for i in range(k)])
-    xxt = np.outer(x, x)
+    Axs = [As[i].dot(x) for i in range(k)]
+    Ax_norms = np.array([norm(Ax) ** 2 for Ax in Axs])
+    loss, u, v = compute_singular_vectors(x, Bs, Ax_norms)
+    eigenvalue, eigenvector = compute_eigenvector(Bs, Ax_norms)
+    recon = sqrt(eigenvalue) * eigenvector
+    recon_err = unsigned_distance(recon, x)
 
-    # compute the leading singular vectors
-    U, S, Vt = svds(Z - xxt, k=1, tol=1e-4, maxiter=10000)
-    u = U[:,0]
-    v = Vt[0,:]
-
-    uvt = np.outer(u, v)
-
-    # the loss 
-    loss = S[0]
+    t1 = datetime.now()
 
     gradAs = []
-    for (A, B) in zip(As, Bs):
-        gradAs.append( u.dot(B.dot(B.T)).dot(v) * A.dot(xxt) )
-
     gradBs = []
-    for (A, B) in zip(As, Bs):
-        gradBs.append( (norm(A.dot(x)) ** 2) * (uvt + uvt.T).dot(B) )
 
-    metrics = np.array([loss] + loss_helper(Z, x))
+    for (A, B, Ax, Axnorm) in zip(As, Bs, Axs, list(Ax_norms)):
+        Btv = B.T.dot(v)
+        Btu = B.T.dot(u)
 
+        gradAs.append( Btu.dot(Btv) * np.outer(Ax, x) )
+        gradBs.append( Axnorm * (np.outer(u, Btv) + np.outer(v, Btu)))
+
+
+    # metrics = np.array([loss])
+    metrics = np.array([loss, recon_err])
+
+    t2 = datetime.now()
+    # print(t1 - t0, t2 - t1)
     return gradAs, gradBs, metrics
 
 def pesd_minibatch_gradient(minibatch, X, As, Bs):
@@ -194,7 +291,7 @@ def pesd_minibatch_gradient(minibatch, X, As, Bs):
     loss = 0 
     recon_err = 0
 
-    metrics = np.zeros(4)
+    metrics = np.zeros(2)
 
     for index in minibatch:
         (gradA_terms, gradB_terms, metrics_term) = pesd_gradient_term_full(X[index,:], As, Bs)
@@ -245,14 +342,12 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     if save_dir and not os.path.exists(exp_dir):
         os.mkdir(exp_dir)
 
-    NUM_METRICS = 8
+    NUM_METRICS = 2
 
     n, d = X_train.shape
-    all_metrics = np.zeros((nepochs, NUM_METRICS))
+    all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
 
-    if start_after == -1:
-        As = [initialize(r, d) for i in range(k)]
-        Bs = [initialize(d, r) for i in range(k)]
+    As, Bs = initialize_pca(X, k, r) if args.initialize == 'pca' else initialize_random(X, k, r)
 
     print(exp_dir)
     print("epoch\tloss\trecon err")
@@ -266,7 +361,7 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
 
         step_size = initial_step_size / (sqrt(epoch + 1))
 
-        total_metrics = np.zeros(4)
+        total_metrics = np.zeros(NUM_METRICS)
 
         for j in range(num_steps_per_epoch):
             minibatch = np.random.choice(examples, size=(minibatch_size))
@@ -283,18 +378,18 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
 
             if j % REPORT_PROGRESS_EVERY == 0 and j > 0:
                 average_metrics = total_metrics / REPORT_PROGRESS_EVERY
-                total_metrics = np.zeros(4)
+                total_metrics = np.zeros(NUM_METRICS)
 
                 time_elapsed = datetime.now() - start_time
 
-                print ("{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, time_elapsed, "\t".join(map(str, list(average_metrics)))))
+                print ("\t{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, time_elapsed, "\t".join(map(str, list(average_metrics)))))
 
         metrics_train = pesd_loss_approx(X_train, As, Bs, cheat_factor=cheat_factor)
         metrics_test = pesd_loss_exact(X_test, As, Bs)
         metrics = np.hstack((metrics_train, metrics_test))
-        all_metrics[i, :] = metrics
+        all_metrics[epoch, :] = metrics
         time_elapsed = datetime.now() - start_time
-        print ("\t{}\t{}\t{}".format(epoch, time_elapsed, "\t".join(map(str, list(metrics)))))
+        print ("{}\t{}\t{}".format(epoch, time_elapsed, "\t".join(map(str, list(metrics)))))
 
         if save_dir:
             for i in range(k):
@@ -315,6 +410,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_after', type=int, default=-1, help="continue a previous run, starting at this iteration")
     parser.add_argument('--cheat_factor', type=int, default=1, help="when computing the loss and reconstruction error, subsample by this factor")
     parser.add_argument('--minibatch_size', type=int, default=1, help="the size of each minibatch.  only used in SGD.")
+    parser.add_argument('--initialize', type=str, choices=['random', 'pca'], default='random')
     args = parser.parse_args()
 
     ind_train = np.load('train.npy')
