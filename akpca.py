@@ -283,6 +283,7 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
 
             if j % REPORT_PROGRESS_EVERY == 0 and j > 0:
                 average_metrics = total_metrics / REPORT_PROGRESS_EVERY
+                total_metrics = np.zeros(4)
 
                 time_elapsed = datetime.now() - start_time
 
