@@ -19,7 +19,7 @@ def initialize(k, d):
 	return A
 
 def pesd_loss_approx(X, As, Bs, cheat_factor=1.0):
-	""" Approximates the objective function and reconstruction error by computing it over a minibatch.
+	""" Approximates the objective function and reconstruction error (three ways)
 
 	Parameters
 	----------
@@ -31,10 +31,8 @@ def pesd_loss_approx(X, As, Bs, cheat_factor=1.0):
 
 	Returns
 	-------
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
+	metrics: ndarray, shape (4, 0)
+		[loss, recon1, recon2, recon3]
 
 	"""
 	n, d = X.shape
@@ -42,9 +40,38 @@ def pesd_loss_approx(X, As, Bs, cheat_factor=1.0):
 	return pesd_loss_exact(X[sample, :], As, Bs)
 
 def pesd_loss_exact(X, As, Bs):
+	""" Computes the objective function and reconstruction error (three ways)
+
+	Parameters
+	----------
+	X : ndarray, shape (n, d)
+	A : ndarray, shape (k, d^2)
+		the current encoding matrix
+	B : ndarray, shape (d^2, k)
+		the current decoding matrix
+
+	Returns
+	-------
+	metrics: ndarray, shape (4, 0)
+		[loss, recon1, recon2, recon3]
+
+	"""
 	return sum([pesd_loss_term(x, As, Bs) for x in X]) / X.shape[0]
 
 def loss_helper(Z, x):
+	""" Computes the objective function and reconstruction error over a data point.
+
+	Parameters
+	----------
+	Z : ndarray, shape (d^2, x^2)
+		the decoded data point
+	x : ndarray, shape (x,)
+		the data point
+	Returns
+	-------
+	recons: list of length 3: [recon1, recon2, recon3]
+
+	"""
     w, V = eigs(0.5 * (Z + Z.T), k=1, tol=1e-4, maxiter=10000)
     eigenvalue = w[0]
     eigenvector = V[:,0]
@@ -71,10 +98,8 @@ def pesd_loss_term(x, As, Bs):
 
 	Returns
 	-------
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
+	metrics: ndarray, shape (4,)
+		[loss, recon1, recon2, recon3]
 
 	"""
 	Z = sum([(norm(A.dot(x)) ** 2) * B.dot(B.T) for (A, B) in zip(As, Bs)])
@@ -96,8 +121,6 @@ def pesd_gradient_term_full(x, As, Bs):
 		the current encoding matrix
 	B : ndarray, shape (d^2, k)
 		the current decoding matrix
-	compute_recon_err : bool
-		whether to compute reconstruction error too
 
 	Returns
 	-------
@@ -105,10 +128,8 @@ def pesd_gradient_term_full(x, As, Bs):
 		the derivative of the objective function wrt A
 	grad_B : ndarray, shape (d^2, k)
 		the derivative of the objective function wrt B
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
+	metrics: ndarray, shape (4, 0)
+		[loss, recon1, recon2, recon3]
 
 	"""
 	k = len(As)
@@ -133,12 +154,6 @@ def pesd_gradient_term_full(x, As, Bs):
 	gradBs = []
 	for (A, B) in zip(As, Bs):
 		gradBs.append( (norm(A.dot(x)) ** 2) * (uvt + uvt.T).dot(B) )
-
-	# compute the reconstruction of x
-	# recon = poly2_preimage(Z)
-
-	# compute the reconstruction error
-	# recon_err = unsigned_distance(x, recon)
 
 	metrics = np.array([loss] + loss_helper(Z, x))
 
@@ -166,10 +181,9 @@ def pesd_minibatch_gradient(minibatch, X, As, Bs):
 		the derivative of the objective function wrt A
 	grad_B : ndarray, shape (d^2, k)
 		the derivative of the objective function wrt B
-	loss : float
-		the value of the objective function
-	recon_err : float
-		the reconstruction error
+	metrics: ndarray, shape (4, 0)
+		[loss, recon1, recon2, recon3]
+
 
 	"""
 	n, d = X.shape
@@ -268,11 +282,11 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
 				Bs[i] = Bs[i] - (step_size / minibatch_size) * gradBs[i]
 
 			if j % REPORT_PROGRESS_EVERY == 0 and j > 0:
-				average_metrics = metrics / REPORT_PROGRESS_EVERY
+				average_metrics = total_metrics / REPORT_PROGRESS_EVERY
 
 				time_elapsed = datetime.now() - start_time
 
-				print ("\t{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, time_elapsed, "\t".join(map(str, list(average_metrics)))))
+				print ("{}\t{}\t{}".format(epoch * num_steps_per_epoch + j, time_elapsed, "\t".join(map(str, list(average_metrics)))))
 
 		metrics_train = pesd_loss_approx(X_train, As, Bs, cheat_factor=cheat_factor)
 		metrics_test = pesd_loss_exact(X_test, As, Bs)
