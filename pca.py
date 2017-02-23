@@ -19,7 +19,7 @@ if __name__ == '__main__':
 	k = args.k
 
 	# save results in exp_dir
-	exp_dir = '%s/pca_k_%d_%s' % (args.directory, args.k)
+	exp_dir = '%s/pca_k_%d' % (args.directory, args.k)
 	if args.directory and not os.path.exists(exp_dir):
 		os.mkdir(exp_dir)
 

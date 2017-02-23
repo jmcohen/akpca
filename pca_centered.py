@@ -24,30 +24,32 @@ if __name__ == '__main__':
 	if args.directory and not os.path.exists(exp_dir):
 		os.mkdir(exp_dir)
 
-	X = get_dataset(args.dataset, half=args.half)
+	ind_train = np.load('train.npy')
+	ind_test = np.load('test.npy')
+
+	X = get_dataset(args.dataset, half='full')
+	X_train = X[ind_train, :]
+	X_test = X[ind_test, :]
 
 	# compute the mean
-	center = X.mean(0)
+	train_center = X_train.mean(0)
+	test_center = X_test.mean(0)
 
 	# remove the mean
-	X_centered = X - center
+	Xtrain_centered = X_train - train_center
+	Xtest_centered = X_test - test_center
 
 	# compute the singular value decomposition of the data matrix
-	U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+	U, S, Vt = np.linalg.svd(Xtrain_centered, full_matrices=False)
 
 	# A = the top k right singular vectors
 	A = Vt[0:k, :]
 
 	# compute the reconstruction of X 
-	recon = X_centered.dot(A.T).dot(A) + center
+	recon = Xtest_centered.dot(A.T).dot(A) + test_center
 
 	# compute reconstruction error
-	recon_err = np.linalg.norm(X - recon, 'fro') ** 2
+	recon_err = np.linalg.norm(X_test - recon, 'fro') ** 2 / X_test.shape[0]
 
 	# save A and the reconstruction error
-	np.save('%s/iter0_A.npy' % exp_dir, A)
-	np.savetxt('%s/iter0_recon.txt' % exp_dir, np.array([recon_err]))
-
-	print recon_err / X.shape[0]
-
-
+	print(recon_err)
