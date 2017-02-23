@@ -15,11 +15,11 @@ def get_color_datasets():
     return ['cifar10_color']
 
 def load_dataset(dataset):
-    if dataset == "mnist":
+    if dataset == "mnist" or dataset == "mnist_big":
         ind_train = np.load('train.npy')
         ind_test = np.load('test.npy')
 
-        X = get_dataset('mnist', half='full')
+        X = get_dataset(dataset, half='full')
         X_train = X[ind_train, :]
         X_test = X[ind_test, :]
         return X_train, X_test
