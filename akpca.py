@@ -29,12 +29,12 @@ def initialize_pca2(X, k, r):
     n, d = X.shape
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
 
-    As = [np.zeros((r, d)) for i in range(k)]
-    Bs = [np.zeros((d, r)) for i in range(k)]
+    As = [1e-4 * np.random.randn(r, d) for i in range(k)]
+    Bs = [1e-4 * np.random.randn(r, d) for i in range(k)]
 
     for i in range(k):
-        As[i][0, :] = Vt[i, :]
-        Bs[i][:, 0] = Vt[i, :]
+        As[i][0, :] += Vt[i, :]
+        Bs[i][:, 0] += Vt[i, :]
 
     return As, Bs
 
@@ -47,8 +47,8 @@ def initialize_pca(X, k, r):
 
     for i in range(k):
         for j in range(r):
-            As[i][j, :] = Vt[i, :] / sqrt(r)
-            Bs[i][:, j] = Vt[i, :] / sqrt(r)
+            As[i][j, :] = (Vt[i, :] / sqrt(r))
+            Bs[i][:, j] = (Vt[i, :] / sqrt(r))
 
     return As, Bs
 
@@ -347,7 +347,11 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     n, d = X_train.shape
     all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
 
-    As, Bs = initialize_pca(X_train, k, r) if initialize == 'pca' else initialize_random(X_train, k, r)
+    if start_after == -1:
+        As, Bs = initialize_pca(X_train, k, r) if initialize == 'pca' else initialize_random(X_train, k, r)
+    else:
+        As = [np.load('%s/iter%d_A_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
+        Bs = [np.load('%s/iter%d_B_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
 
     print(exp_dir)
     print("epoch\tloss\trecon err")
