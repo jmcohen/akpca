@@ -352,7 +352,8 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     else:
         As = [np.load('%s/iter%d_A_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
         Bs = [np.load('%s/iter%d_B_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
-        all_metrics = np.load('%s/iter%d_metrics.npy' % (exp_dir, start_after))
+        all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
+        all_metrics[:epoch, :] = np.loadtxt('%s/iter%d_metrics.txt' % (exp_dir, start_after))
 
     print(exp_dir)
     print("epoch\tloss\trecon err")
