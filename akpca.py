@@ -345,13 +345,14 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
     NUM_METRICS = 2
 
     n, d = X_train.shape
-    all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
 
     if start_after == -1:
         As, Bs = initialize_pca(X_train, k, r) if initialize == 'pca' else initialize_random(X_train, k, r)
+        all_metrics = np.zeros((nepochs, 2*NUM_METRICS))
     else:
         As = [np.load('%s/iter%d_A_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
         Bs = [np.load('%s/iter%d_B_%d.npy' % (exp_dir, start_after, i)) for i in range(k)]
+        all_metrics = np.load('%s/iter%d_metrics.npy' % (exp_dir, start_after))
 
     print(exp_dir)
     print("epoch\tloss\trecon err")
@@ -361,7 +362,7 @@ def sgd(X_train, X_test, k, r, save_dir, initial_step_size, minibatch_size, epoc
 
     examples = range(n)
 
-    for epoch in range(nepochs):
+    for epoch in range(start_after + 1, nepochs):
 
         step_size = initial_step_size / (sqrt(epoch + 1))
 
